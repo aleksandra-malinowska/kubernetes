@@ -58,6 +58,19 @@ const (
 
 type MetricsForE2E metrics.MetricsCollection
 
+func (m *MetricsForE2E) computeClusterAutoscalerMetricsDelta(before metrics.MetricsCollection) {
+	for name, samples := range before.ClusterAutoscalerMetrics {
+		v, found := m.ClusterAutoscalerMetrics[name]
+		if found {
+			for i, _ := range samples {
+				if i < len(v) {
+					v[i].Value = v[i].Value - samples[i].Value
+				}
+			}
+		}
+	}
+}
+
 func (m *MetricsForE2E) filterMetrics() {
 	interestingApiServerMetrics := make(metrics.ApiServerMetrics)
 	for _, metric := range InterestingApiServerMetrics {
@@ -66,6 +79,10 @@ func (m *MetricsForE2E) filterMetrics() {
 	interestingControllerManagerMetrics := make(metrics.ControllerManagerMetrics)
 	for _, metric := range InterestingControllerManagerMetrics {
 		interestingControllerManagerMetrics[metric] = (*m).ControllerManagerMetrics[metric]
+	}
+	interestingClusterAutoscalerMetrics := make(metrics.ClusterAutoscalerMetrics)
+	for _, metric := range InterestingClusterAutoscalerMetrics {
+		interestingClusterAutoscalerMetrics[metric] = (*m).ClusterAutoscalerMetrics[metric]
 	}
 	interestingKubeletMetrics := make(map[string]metrics.KubeletMetrics)
 	for kubelet, grabbed := range (*m).KubeletMetrics {
@@ -90,6 +107,12 @@ func (m *MetricsForE2E) PrintHumanReadable() string {
 	for _, interestingMetric := range InterestingControllerManagerMetrics {
 		buf.WriteString(fmt.Sprintf("For %v:\n", interestingMetric))
 		for _, sample := range (*m).ControllerManagerMetrics[interestingMetric] {
+			buf.WriteString(fmt.Sprintf("\t%v\n", metrics.PrintSample(sample)))
+		}
+	}
+	for _, interestingMetric := range InterestingClusterAutoscalerMetrics {
+		buf.WriteString(fmt.Sprintf("For %v:\n", interestingMetric))
+		for _, sample := range (*m).ClusterAutoscalerMetrics[interestingMetric] {
 			buf.WriteString(fmt.Sprintf("\t%v\n", metrics.PrintSample(sample)))
 		}
 	}
@@ -156,6 +179,12 @@ var InterestingKubeletMetrics = []string{
 	"kubelet_sync_pods_latency_microseconds",
 }
 
+var InterestingClusterAutoscalerMetrics = []string{
+	"function_duration_seconds",
+	"errors_total",
+	"evicted_pods_total",
+}
+
 // Dashboard metrics
 type LatencyMetric struct {
 	Perc50  time.Duration `json:"Perc50"`
@@ -199,7 +228,7 @@ func (l *SchedulingLatency) PrintJSON() string {
 }
 
 type SaturationTime struct {
-	TimeToSaturate time.Duration `json:"timeToStaturate"`
+	TimeToSaturate time.Duration `json:"timeToSaturate"`
 	NumberOfNodes  int           `json:"numberOfNodes"`
 	NumberOfPods   int           `json:"numberOfPods"`
 	Throughput     float32       `json:"throughput"`

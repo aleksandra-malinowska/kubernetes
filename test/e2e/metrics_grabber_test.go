@@ -36,7 +36,7 @@ var _ = framework.KubeDescribe("MetricsGrabber", func() {
 		var err error
 		c = f.ClientSet
 		framework.ExpectNoError(err)
-		grabber, err = metrics.NewMetricsGrabber(c, true, true, true, true)
+		grabber, err = metrics.NewMetricsGrabber(c, true, true, true, true, true)
 		framework.ExpectNoError(err)
 	})
 
@@ -94,6 +94,27 @@ var _ = framework.KubeDescribe("MetricsGrabber", func() {
 			return
 		}
 		response, err := grabber.GrabFromControllerManager()
+		framework.ExpectNoError(err)
+		Expect(response).NotTo(BeEmpty())
+	})
+
+	It("should grab all metrics from a ClusterAutoscaler.", func() {
+		By("Proxying to Pod through the API server")
+		// Check if master Node is registered
+		nodes, err := c.Core().Nodes().List(metav1.ListOptions{})
+		framework.ExpectNoError(err)
+
+		var masterRegistered = false
+		for _, node := range nodes.Items {
+			if strings.HasSuffix(node.Name, "master") {
+				masterRegistered = true
+			}
+		}
+		if !masterRegistered {
+			framework.Logf("Master is node api.Registry. Skipping testing ClusterAutoscaler metrics.")
+			return
+		}
+		response, err := grabber.GrabFromClusterAutoscaler()
 		framework.ExpectNoError(err)
 		Expect(response).NotTo(BeEmpty())
 	})
