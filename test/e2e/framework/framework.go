@@ -95,6 +95,8 @@ type Framework struct {
 	// Place where various additional data is stored during test run to be printed to ReportDir,
 	// or stdout if ReportDir is not set once test ends.
 	TestSummaries []TestDataSummary
+	// Place to keep ClusterAutoscaler metrics from before test in order to compute delta.
+	clusterAutoscalerMetricsBeforeTest metrics.MetricsCollection
 }
 
 type TestDataSummary interface {
@@ -233,6 +235,21 @@ func (f *Framework) BeforeEach() {
 			f.logsSizeWaitGroup.Done()
 		}()
 	}
+
+	if TestContext.GatherMetricsAfterTest && TestContext.IncludeClusterAutoscalerMetrics {
+		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, !ProviderIs("kubemark"), false, false, false, TestContext.IncludeClusterAutoscalerMetrics)
+		if err != nil {
+			Logf("Failed to create MetricsGrabber (skipping ClusterAutoscaler metrics gathering before test): %v", err)
+		} else {
+			f.clusterAutoscalerMetricsBeforeTest, err = grabber.Grab()
+			if err != nil {
+				Logf("MetricsGrabber failed to grab CA metrics before test (skipping metrics gathering): %v", err)
+			} else {
+				Logf("Gathered ClusterAutoscaler metrics before test")
+			}
+		}
+
+	}
 }
 
 // AfterEach deletes the namespace, after reading its events.
@@ -328,16 +345,16 @@ func (f *Framework) AfterEach() {
 	if TestContext.GatherMetricsAfterTest {
 		By("Gathering metrics")
 		// Grab apiserver, scheduler, controller-manager metrics and nodes' kubelet metrics (for non-kubemark case).
-		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, !ProviderIs("kubemark"), true, true, true)
+		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, !ProviderIs("kubemark"), true, true, true, TestContext.IncludeClusterAutoscalerMetrics)
 		if err != nil {
 			Logf("Failed to create MetricsGrabber (skipping metrics gathering): %v", err)
 		} else {
 			received, err := grabber.Grab()
 			if err != nil {
-				Logf("MetricsGrabber failed to grab metrics (skipping metrics gathering): %v", err)
-			} else {
-				f.TestSummaries = append(f.TestSummaries, (*MetricsForE2E)(&received))
+				Logf("MetricsGrabber failed to grab some of the metrics: %v", err)
 			}
+			(*MetricsForE2E)(&received).computeClusterAutoscalerMetricsDelta(f.clusterAutoscalerMetricsBeforeTest)
+			f.TestSummaries = append(f.TestSummaries, (*MetricsForE2E)(&received))
 		}
 	}
 

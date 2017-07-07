@@ -39,6 +39,7 @@ type MetricsCollection struct {
 	ControllerManagerMetrics ControllerManagerMetrics
 	KubeletMetrics           map[string]KubeletMetrics
 	SchedulerMetrics         SchedulerMetrics
+	ClusterAutoscalerMetrics ClusterAutoscalerMetrics
 }
 
 type MetricsGrabber struct {
@@ -47,11 +48,12 @@ type MetricsGrabber struct {
 	grabFromControllerManager bool
 	grabFromKubelets          bool
 	grabFromScheduler         bool
+	grabFromClusterAutoscaler bool
 	masterName                string
 	registeredMaster          bool
 }
 
-func NewMetricsGrabber(c clientset.Interface, kubelets bool, scheduler bool, controllers bool, apiServer bool) (*MetricsGrabber, error) {
+func NewMetricsGrabber(c clientset.Interface, kubelets bool, scheduler bool, controllers bool, apiServer bool, clusterAutoscaler bool) (*MetricsGrabber, error) {
 	registeredMaster := false
 	masterName := ""
 	nodeList, err := c.Core().Nodes().List(metav1.ListOptions{})
@@ -71,7 +73,8 @@ func NewMetricsGrabber(c clientset.Interface, kubelets bool, scheduler bool, con
 	if !registeredMaster {
 		scheduler = false
 		controllers = false
-		glog.Warningf("Master node is not registered. Grabbing metrics from Scheduler and ControllerManager is disabled.")
+		clusterAutoscaler = false
+		glog.Warningf("Master node is not registered. Grabbing metrics from Scheduler, ControllerManager and ClusterAutoscaler is disabled.")
 	}
 
 	return &MetricsGrabber{
@@ -80,6 +83,7 @@ func NewMetricsGrabber(c clientset.Interface, kubelets bool, scheduler bool, con
 		grabFromControllerManager: controllers,
 		grabFromKubelets:          kubelets,
 		grabFromScheduler:         scheduler,
+		grabFromClusterAutoscaler: clusterAutoscaler,
 		masterName:                masterName,
 		registeredMaster:          registeredMaster,
 	}, nil
@@ -117,6 +121,17 @@ func (g *MetricsGrabber) GrabFromScheduler() (SchedulerMetrics, error) {
 		return SchedulerMetrics{}, err
 	}
 	return parseSchedulerMetrics(output)
+}
+
+func (g *MetricsGrabber) GrabFromClusterAutoscaler() (ClusterAutoscalerMetrics, error) {
+	if !g.registeredMaster {
+		return ClusterAutoscalerMetrics{}, fmt.Errorf("Master's Kubelet is not registered. Skipping ClusterAutoscaler's metrics gathering.")
+	}
+	output, err := g.getMetricsFromPod(fmt.Sprintf("%v-%v", "cluster-autoscaler", g.masterName), metav1.NamespaceSystem, 8085) // TODO fix this
+	if err != nil {
+		return ClusterAutoscalerMetrics{}, err
+	}
+	return parseClusterAutoscalerMetrics(output)
 }
 
 func (g *MetricsGrabber) GrabFromControllerManager() (ControllerManagerMetrics, error) {
@@ -165,6 +180,14 @@ func (g *MetricsGrabber) Grab() (MetricsCollection, error) {
 			result.ControllerManagerMetrics = metrics
 		}
 	}
+	if g.grabFromClusterAutoscaler {
+		metrics, err := g.GrabFromClusterAutoscaler()
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			result.ClusterAutoscalerMetrics = metrics
+		}
+	}
 	if g.grabFromKubelets {
 		result.KubeletMetrics = make(map[string]KubeletMetrics)
 		nodes, err := g.client.Core().Nodes().List(metav1.ListOptions{})
@@ -182,7 +205,7 @@ func (g *MetricsGrabber) Grab() (MetricsCollection, error) {
 		}
 	}
 	if len(errs) > 0 {
-		return MetricsCollection{}, fmt.Errorf("Errors while grabbing metrics: %v", errs)
+		return result, fmt.Errorf("Errors while grabbing metrics: %v", errs)
 	}
 	return result, nil
 }
