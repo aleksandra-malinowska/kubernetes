@@ -61,19 +61,22 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	var coresPerNode int
 	var memCapacityMb int
 	var originalSizes map[string]int
+	var sum int
 
 	BeforeEach(func() {
 		framework.SkipUnlessProviderIs("gce", "gke")
 
 		c = f.ClientSet
-		originalSizes = make(map[string]int)
-		sum := 0
-		for _, mig := range strings.Split(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") {
-			size, err := framework.GroupSize(mig)
-			framework.ExpectNoError(err)
-			By(fmt.Sprintf("Initial size of %s: %d", mig, size))
-			originalSizes[mig] = size
-			sum += size
+		if originalSizes == nil {
+			originalSizes = make(map[string]int)
+			sum = 0
+			for _, mig := range strings.Split(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") {
+				size, err := framework.GroupSize(mig)
+				framework.ExpectNoError(err)
+				By(fmt.Sprintf("Initial size of %s: %d", mig, size))
+				originalSizes[mig] = size
+				sum += size
+			}
 		}
 
 		framework.ExpectNoError(framework.WaitForClusterSize(c, sum, scaleUpTimeout))
