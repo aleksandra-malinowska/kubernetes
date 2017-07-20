@@ -14,7 +14,7 @@
         "containers": [
             {
                 "name": "cluster-autoscaler",
-                "image": "gcr.io/bskiba-dev/cluster-autoscaler:dev",
+                "image": "gcr.io/gmarek-kubernetes/cluster-autoscaler:dev",
                 "command": [
                     "./run.sh",
                     "--kubernetes=https://{{MASTER_IP}}:443?inClusterConfig=0&useServiceAccount=0&auth=/kubeconfig/cluster_autoscaler.kubeconfig",

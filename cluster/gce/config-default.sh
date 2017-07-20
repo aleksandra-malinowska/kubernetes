@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 # Copyright 2014 The Kubernetes Authors.
 #
@@ -28,12 +28,12 @@ REGION=${ZONE%-*}
 RELEASE_REGION_FALLBACK=${RELEASE_REGION_FALLBACK:-false}
 REGIONAL_KUBE_ADDONS=${REGIONAL_KUBE_ADDONS:-true}
 NODE_SIZE=${NODE_SIZE:-n1-standard-2}
-NUM_NODES=${NUM_NODES:-10}
+NUM_NODES=${NUM_NODES:-3}
 MASTER_SIZE=${MASTER_SIZE:-n1-standard-$(get-master-size)}
 MASTER_DISK_TYPE=pd-ssd
-MASTER_DISK_SIZE=${MASTER_DISK_SIZE:-40GB}
+MASTER_DISK_SIZE=${MASTER_DISK_SIZE:-20GB}
 NODE_DISK_TYPE=${NODE_DISK_TYPE:-pd-standard}
-NODE_DISK_SIZE=${NODE_DISK_SIZE:-200GB}
+NODE_DISK_SIZE=${NODE_DISK_SIZE:-100GB}
 NODE_LOCAL_SSDS=${NODE_LOCAL_SSDS:-0}
 # Accelerators to be attached to each node. Format "type=<accelerator-type>,count=<accelerator-count>"
 # More information on available GPUs here - https://cloud.google.com/compute/docs/gpus/
@@ -159,7 +159,7 @@ if [[ ${KUBE_ENABLE_INSECURE_REGISTRY:-false} == "true" ]]; then
 fi
 
 # Optional: customize runtime config
-RUNTIME_CONFIG="${KUBE_RUNTIME_CONFIG:-admissionregistration.k8s.io/v1alpha1}"
+RUNTIME_CONFIG="${KUBE_RUNTIME_CONFIG:-}"
 
 # Optional: set feature gates
 FEATURE_GATES="${KUBE_FEATURE_GATES:-ExperimentalCriticalPodAnnotation=true}"
@@ -236,7 +236,7 @@ fi
 ADMISSION_CONTROL=Initializers,NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,DefaultTolerationSeconds,NodeRestriction,ResourceQuota
 
 # Optional: if set to true kube-up will automatically check for existing resources and clean them up.
-KUBE_UP_AUTOMATIC_CLEANUP=${KUBE_UP_AUTOMATIC_CLEANUP:-true}
+KUBE_UP_AUTOMATIC_CLEANUP=${KUBE_UP_AUTOMATIC_CLEANUP:-false}
 
 # Storage backend. 'etcd2' supported, 'etcd3' experimental.
 STORAGE_BACKEND=${STORAGE_BACKEND:-}

@@ -66,7 +66,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	var sum int
 
 	BeforeEach(func() {
-		framework.SkipUnlessProviderIs("gce", "gke")
+		framework.SkipUnlessProviderIs("gce", "gke", "kubemark")
 
 		c = f.ClientSet
 		if originalSizes == nil {

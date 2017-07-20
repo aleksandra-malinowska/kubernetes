@@ -85,11 +85,10 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 
 	BeforeEach(func() {
 		c = f.ClientSet
-		framework.SkipUnlessProviderIs("gce", "gke", "kubemark")
+		framework.SkipUnlessProviderIs("gce", "gke")
 
 		originalSizes = make(map[string]int)
 		sum := 0
-		By(fmt.Sprintf("%s", framework.TestContext.CloudConfig.NodeInstanceGroup))
 		for _, mig := range strings.Split(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") {
 			size, err := framework.GroupSize(mig)
 			framework.ExpectNoError(err)
@@ -149,7 +148,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 		glog.Infof("Made nodes schedulable again in %v", time.Now().Sub(s).String())
 	})
 
-	It("shouldn't increase cluster size if pending pod is too large [Feature:ClusterSizeAutoscalingScaleUpKubemark]", func() {
+	It("shouldn't increase cluster size if pending pod is too large [Feature:ClusterSizeAutoscalingScaleUp]", func() {
 		By("Creating unschedulable pod")
 		ReserveMemory(f, "memory-reservation", 1, int(1.1*float64(memCapacityMb)), false, defaultTimeout)
 		defer framework.DeleteRCAndPods(f.ClientSet, f.InternalClientset, f.Namespace.Name, "memory-reservation")
@@ -187,10 +186,10 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 		framework.ExpectNoError(waitForAllCaPodsReadyInNamespace(f, c))
 	}
 
-	It("should increase cluster size if pending pods are small [Feature:ClusterSizeAutoscalingScaleUpTODO]",
+	It("should increase cluster size if pending pods are small [Feature:ClusterSizeAutoscalingScaleUp]",
 		func() { simpleScaleUpTest(0) })
 
-	It("should increase cluster size if pending pods are small and one node is broken [Feature:ClusterSizeAutoscalingScaleUpKubemark2]",
+	It("should increase cluster size if pending pods are small and one node is broken [Feature:ClusterSizeAutoscalingScaleUp]",
 		func() {
 			framework.TestUnderTemporaryNetworkFailure(c, "default", getAnyNode(c), func() { simpleScaleUpTest(1) })
 		})
@@ -412,7 +411,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 			framework.AddOrUpdateLabelOnNode(c, node, labelKey, labelValue)
 		}
 
-		scheduling.CreateNodeSelectorPods(f, "node-selector", minSize+1, map[string]string{labelKey: labelValue}, false)
+		CreateNodeSelectorPods(f, "node-selector", minSize+1, map[string]string{labelKey: labelValue}, false)
 
 		By("Waiting for new node to appear and annotating it")
 		framework.WaitForGroupSize(minMig, int32(minSize+1))
