@@ -51,6 +51,17 @@ func ResizeGroup(group string, size int32) error {
 	} else if TestContext.Provider == "aws" {
 		client := autoscaling.New(session.New())
 		return awscloud.ResizeInstanceGroup(client, group, int(size))
+	} else if TestContext.Provider == "kubemark" {
+		curr_size, err := GroupSize(group)
+		if err != nil {
+			return err
+		}
+		if curr_size > int(size) {
+			return TestContext.CloudConfig.KubemarkProvider.RemoveNodesFromNodeGroup(group, curr_size-int(size))
+		} else if curr_size < int(size) {
+			return TestContext.CloudConfig.KubemarkProvider.AddNodesToNodeGroup(group, int(size)-curr_size)
+		}
+		return nil
 	} else {
 		return fmt.Errorf("Provider does not support InstanceGroups")
 	}
@@ -72,6 +83,9 @@ func GetGroupNodes(group string) ([]string, error) {
 			lines[i] = line[:strings.Index(line, " ")]
 		}
 		return lines, nil
+	} else if TestContext.Provider == "kubemark" {
+		return TestContext.CloudConfig.KubemarkProvider.GetNodesForNodegroup(group)
+		//return nil, fmt.Errorf("kubemark provider not yet implemented")
 	} else {
 		return nil, fmt.Errorf("provider does not support InstanceGroups")
 	}
@@ -99,6 +113,9 @@ func GroupSize(group string) (int, error) {
 			return -1, fmt.Errorf("instance group not found: %s", group)
 		}
 		return instanceGroup.CurrentSize()
+	} else if TestContext.Provider == "kubemark" {
+		return TestContext.CloudConfig.KubemarkProvider.GetNodeGroupSize(group)
+		//return -1, fmt.Errorf("kubemark provider not yet implemented")
 	} else {
 		return -1, fmt.Errorf("provider does not support InstanceGroups")
 	}

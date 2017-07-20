@@ -4,6 +4,7 @@ metadata:
   name: hollow-node
   labels:
     name: hollow-node
+    autoscaling.k8s.io/nodegroup: kubernetes-minion-group
 spec:
   replicas: {{numreplicas}}
   selector:
@@ -12,6 +13,7 @@ spec:
     metadata:
       labels:
         name: hollow-node
+        autoscaling.k8s.io/nodegroup: kubernetes-minion-group
     spec:
       initContainers:
       - name: init-inotify-limit

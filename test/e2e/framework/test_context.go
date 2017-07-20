@@ -27,12 +27,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/test/kubemark"
 )
 
 const defaultHost = "http://127.0.0.1:8080"
 
 type TestContextType struct {
 	KubeConfig         string
+	ExternalKubeConfig string
 	KubeContext        string
 	KubeAPIContentType string
 	KubeVolumeDir      string
@@ -155,7 +157,8 @@ type CloudConfig struct {
 	NodeTag           string
 	MasterTag         string
 
-	Provider cloudprovider.Interface
+	Provider         cloudprovider.Interface
+	KubemarkProvider *kubemark.Provider
 }
 
 var TestContext TestContextType
@@ -199,6 +202,7 @@ func RegisterCommonFlags() {
 func RegisterClusterFlags() {
 	flag.BoolVar(&TestContext.VerifyServiceAccount, "e2e-verify-service-account", true, "If true tests will verify the service account before running.")
 	flag.StringVar(&TestContext.KubeConfig, clientcmd.RecommendedConfigPathFlag, os.Getenv(clientcmd.RecommendedConfigPathEnvVar), "Path to kubeconfig containing embedded authinfo.")
+	flag.StringVar(&TestContext.ExternalKubeConfig, fmt.Sprintf("%s-%s", clientcmd.RecommendedConfigPathFlag, "external"), clientcmd.RecommendedHomeFile, "Path to kubeconfig containing embedded authinfo.")
 	flag.StringVar(&TestContext.KubeContext, clientcmd.FlagContext, "", "kubeconfig context to use/override. If unset, will use value from 'current-context'")
 	flag.StringVar(&TestContext.KubeAPIContentType, "kube-api-content-type", "application/vnd.kubernetes.protobuf", "ContentType used to communicate with apiserver")
 	flag.StringVar(&TestContext.FederatedKubeContext, "federated-kube-context", "e2e-federation", "kubeconfig context for federation.")

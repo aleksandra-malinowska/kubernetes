@@ -385,6 +385,11 @@ function compute-kube-addon-manager-params {
 	echo ""
 }
 
+
+# function compute-cluster-autoscaler-params {
+# 	echo ""
+# }
+
 # Start a kubernetes master component '$1' which can be any of the following:
 # 1. etcd
 # 2. etcd-events
@@ -402,7 +407,11 @@ function start-kubemaster-component() {
 	echo "Start master component $1"
 	local -r component=$1
 	prepare-log-file /var/log/"${component}".log
+	# if [ "${component}" == "cluster-autoscaler" ]; then 
+	# 	local -r src_file="${KUBE_ROOT}/${component}.manifest"
+	# else
 	local -r src_file="${KUBE_ROOT}/${component}.yaml"
+	# fi
 	local -r params=$(compute-${component}-params)
 
 	# Evaluate variables.
@@ -413,6 +422,8 @@ function start-kubemaster-component() {
 		sed -i -e "s@{{etcd_image}}@${ETCD_IMAGE}@g" "${src_file}"
 	elif [ "${component}" == "kube-addon-manager" ]; then
 		setup-addon-manifests "addons" "kubemark-rbac-bindings"
+	# elif [ "${component}" == "cluster-autoscaler" ]; then 
+	# 	:
 	else
 		local -r component_docker_tag=$(cat ${KUBE_BINDIR}/${component}.docker_tag)
 		sed -i -e "s@{{${component}_docker_tag}}@${component_docker_tag}@g" "${src_file}"
@@ -499,6 +510,7 @@ start-kubemaster-component "kube-apiserver"
 start-kubemaster-component "kube-controller-manager"
 start-kubemaster-component "kube-scheduler"
 start-kubemaster-component "kube-addon-manager"
+#start-kubemaster-component "cluster-autoscaler"
 
 # Wait till apiserver is working fine or timeout.
 echo -n "Waiting for apiserver to be healthy"

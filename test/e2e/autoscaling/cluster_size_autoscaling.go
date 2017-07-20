@@ -85,10 +85,11 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 
 	BeforeEach(func() {
 		c = f.ClientSet
-		framework.SkipUnlessProviderIs("gce", "gke")
+		framework.SkipUnlessProviderIs("gce", "gke", "kubemark")
 
 		originalSizes = make(map[string]int)
 		sum := 0
+		By(fmt.Sprintf("%s", framework.TestContext.CloudConfig.NodeInstanceGroup))
 		for _, mig := range strings.Split(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") {
 			size, err := framework.GroupSize(mig)
 			framework.ExpectNoError(err)
@@ -148,7 +149,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 		glog.Infof("Made nodes schedulable again in %v", time.Now().Sub(s).String())
 	})
 
-	It("shouldn't increase cluster size if pending pod is too large [Feature:ClusterSizeAutoscalingScaleUp]", func() {
+	It("shouldn't increase cluster size if pending pod is too large [Feature:ClusterSizeAutoscalingScaleUpKubemark]", func() {
 		By("Creating unschedulable pod")
 		ReserveMemory(f, "memory-reservation", 1, int(1.1*float64(memCapacityMb)), false, defaultTimeout)
 		defer framework.DeleteRCAndPods(f.ClientSet, f.InternalClientset, f.Namespace.Name, "memory-reservation")
@@ -189,7 +190,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaling [Slow]", func() {
 	It("should increase cluster size if pending pods are small [Feature:ClusterSizeAutoscalingScaleUpTODO]",
 		func() { simpleScaleUpTest(0) })
 
-	It("should increase cluster size if pending pods are small and one node is broken [Feature:ClusterSizeAutoscalingScaleUp]",
+	It("should increase cluster size if pending pods are small and one node is broken [Feature:ClusterSizeAutoscalingScaleUpKubemark2]",
 		func() {
 			framework.TestUnderTemporaryNetworkFailure(c, "default", getAnyNode(c), func() { simpleScaleUpTest(1) })
 		})
