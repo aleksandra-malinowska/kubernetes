@@ -148,7 +148,7 @@ func (kubemarkProvider *Provider) DeleteNode(nodeGroup string, node string) erro
 				return err
 			}
 			// TODO(bskiba): This is ugly, change this
-			glog.Infof("Marking node %s for deletion.", node)
+			//glog.Infof("Marking node %s for deletion.", node)
 			kubemarkProvider.kubemarkCluster.markNodeForDeletion(node)
 			return nil
 		}
@@ -166,7 +166,7 @@ func (kubemarkProvider *Provider) GetNodesForNodegroup(nodeGroup string) ([]stri
 			result = append(result, pod.ObjectMeta.Name)
 		}
 	}
-	glog.Infof("%#v", result)
+	//glog.Infof("%#v", result)
 	return result, nil
 }
 
@@ -232,13 +232,24 @@ func (kubemarkProvider *Provider) getReplicationControllerByName(name string) *a
 	return nil
 }
 
+var r *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+func RandomString(strlen int) string {
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+	result := make([]byte, strlen)
+	for i := range result {
+		result[i] = chars[r.Intn(len(chars))]
+	}
+	return string(result)
+}
+
 func (kubemarkProvider *Provider) addNodeToNodeGroup(nodeGroup string) error {
 	templateCopy, err := api.Scheme.Copy(kubemarkProvider.nodeTemplate)
 	if err != nil {
 		return err
 	}
 	node := templateCopy.(*apiv1.ReplicationController)
-	node.Name = nodeGroup + "-" + fmt.Sprint(rand.Intn(1000))
+	node.Name = nodeGroup + "-" + RandomString(6)
 	node.Labels = map[string]string{nodeGroupLabel: nodeGroup, "name": node.Name}
 	node.Spec.Template.Labels = node.Labels
 	_, err = kubemarkProvider.externalCluster.client.CoreV1().ReplicationControllers(node.Namespace).Create(node)

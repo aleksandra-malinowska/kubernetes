@@ -66,7 +66,8 @@ type Framework struct {
 	BaseName string
 
 	// ClientSet uses internal objects, you should use ClientSet where possible.
-	ClientSet clientset.Interface
+	ClientSet                clientset.Interface
+	ExternalClusterClientSet clientset.Interface
 
 	InternalClientset *internalclientset.Clientset
 	StagingClient     *staging.Clientset
@@ -202,6 +203,8 @@ func (f *Framework) BeforeEach() {
 			externalClient := kube_client.NewForConfigOrDie(externalConfig)
 			TestContext.CloudConfig.KubemarkProvider, err = kubemark.NewKubemarkProvider(externalClient, kubemarkClient, make(chan struct{}))
 			Expect(err).NotTo(HaveOccurred())
+			f.ExternalClusterClientSet, err = clientset.NewForConfig(externalConfig)
+			Expect(err).NotTo(HaveOccurred())
 		}
 	}
 
@@ -248,7 +251,7 @@ func (f *Framework) BeforeEach() {
 	}
 
 	if TestContext.GatherMetricsAfterTest && TestContext.IncludeClusterAutoscalerMetrics {
-		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, !ProviderIs("kubemark"), false, false, false, TestContext.IncludeClusterAutoscalerMetrics)
+		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, f.ExternalClusterClientSet, !ProviderIs("kubemark"), false, false, false, TestContext.IncludeClusterAutoscalerMetrics)
 		if err != nil {
 			Logf("Failed to create MetricsGrabber (skipping ClusterAutoscaler metrics gathering before test): %v", err)
 		} else {
@@ -356,7 +359,7 @@ func (f *Framework) AfterEach() {
 	if TestContext.GatherMetricsAfterTest {
 		By("Gathering metrics")
 		// Grab apiserver, scheduler, controller-manager metrics and nodes' kubelet metrics (for non-kubemark case).
-		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, !ProviderIs("kubemark"), true, true, true, TestContext.IncludeClusterAutoscalerMetrics)
+		grabber, err := metrics.NewMetricsGrabber(f.ClientSet, f.ExternalClusterClientSet, !ProviderIs("kubemark"), true, true, true, TestContext.IncludeClusterAutoscalerMetrics)
 		if err != nil {
 			Logf("Failed to create MetricsGrabber (skipping metrics gathering): %v", err)
 		} else {
