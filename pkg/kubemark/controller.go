@@ -235,7 +235,8 @@ func (kubemarkController *KubemarkController) removeNodeFromNodeGroup(nodeGroup 
 		}
 	}
 
-	return fmt.Errorf("can't delete node %s from nodegroup %s. Node does not exist", node, nodeGroup)
+	glog.Warningf("Can't delete node %s from nodegroup %s. Node does not exist.", node, nodeGroup)
+	return nil
 }
 
 func (kubemarkController *KubemarkController) getReplicationControllerByName(name string) *apiv1.ReplicationController {
@@ -318,7 +319,7 @@ func (kubemarkCluster *kubemarkCluster) removeUnneededNodes(oldObj interface{}, 
 			if kubemarkCluster.nodesToDelete[node.Name] {
 				kubemarkCluster.nodesToDelete[node.Name] = false
 				if err := kubemarkCluster.client.CoreV1().Nodes().Delete(node.Name, &metav1.DeleteOptions{}); err != nil {
-					glog.Errorf("failed to delete node %s from kubemark cluster", node.Name)
+					glog.Errorf("failed to delete node %s from kubemark cluster, err: %v", node.Name, err)
 				}
 			}
 			return
