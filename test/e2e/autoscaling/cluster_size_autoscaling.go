@@ -482,7 +482,7 @@ var _ = SIGDescribe("Cluster size autoscaling [Slow]", func() {
 		By("Creating new node-pool with one n1-standard-4 machine")
 		const extraPoolName = "extra-pool"
 		addNodePool(extraPoolName, "n1-standard-4", 1)
-		defer deleteNodePool(extraPoolName)
+		defer deleteAutoscaledNodePool(extraPoolName, 2)
 		framework.ExpectNoError(framework.WaitForReadyNodes(c, nodeCount+1, resizeTimeout))
 		framework.ExpectNoError(enableAutoscaler(extraPoolName, 1, 2))
 
@@ -635,7 +635,7 @@ var _ = SIGDescribe("Cluster size autoscaling [Slow]", func() {
 		By("Add a new node pool with 1 node and min size 0")
 		const extraPoolName = "extra-pool"
 		addNodePool(extraPoolName, "n1-standard-4", 1)
-		defer deleteNodePool(extraPoolName)
+		defer deleteAutoscaledNodePool(extraPoolName, 1)
 		framework.ExpectNoError(framework.WaitForReadyNodes(c, nodeCount+1, resizeTimeout))
 		err := enableAutoscaler(extraPoolName, 0, 1)
 		framework.ExpectNoError(err)
@@ -899,12 +899,15 @@ func disableAutoscaler(nodePool string, minCount, maxCount int) error {
 		glog.Infof("Config update result: %s", putResult)
 	}
 
+	var finalErr error
 	for startTime := time.Now(); startTime.Add(gkeUpdateTimeout).After(time.Now()); time.Sleep(30 * time.Second) {
-		if val, err := isAutoscalerEnabled(maxCount); err == nil && !val {
+		val, err := isAutoscalerEnabled(maxCount)
+		if err == nil && !val {
 			return nil
 		}
+		finalErr = err
 	}
-	return fmt.Errorf("autoscaler still enabled")
+	return fmt.Errorf("autoscaler still enabled, last error: %v", finalErr)
 }
 
 func addNodePool(name string, machineType string, numNodes int) {
@@ -928,6 +931,19 @@ func deleteNodePool(name string) {
 		glog.Infof("Error: %v", err)
 	}
 	glog.Infof("Node-pool deletion output: %s", output)
+}
+
+func deleteAutoscaledNodePool(name string, maxCount int) {
+	deleteNodePool(name)
+	var finalErr error
+	for startTime := time.Now(); startTime.Add(gkeUpdateTimeout).After(time.Now()); time.Sleep(30 * time.Second) {
+		val, err := isAutoscalerEnabled(maxCount)
+		if err == nil && !val {
+			return
+		}
+		finalErr = err
+	}
+	glog.Errorf("autoscaler still enabled, last error: %v", finalErr)
 }
 
 func getPoolNodes(f *framework.Framework, poolName string) []*v1.Node {
