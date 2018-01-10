@@ -35,7 +35,7 @@ use_cn=false
 
 # TODO: Add support for discovery on other providers?
 if [ "$cert_ip" == "_use_gce_external_ip_" ]; then
-  cert_ip=$(curl -s -H Metadata-Flavor:Google http://metadata.google.internal./computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+  cert_ip=$(curl -s -H Metadata-Flavor:Google http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
 fi
 
 if [ "$cert_ip" == "_use_aws_external_ip_" ]; then
