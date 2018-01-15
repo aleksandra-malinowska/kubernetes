@@ -270,7 +270,7 @@ func (c *ReplicaCalculator) calcPlainMetricReplicas(metrics metricsclient.PodMet
 	return int32(math.Ceil(newUsageRatio * float64(len(metrics)))), utilization, nil
 }
 
-// GetObjectMetricReplicas calculates the desired replica count based on a target metric utilization (as a milli-value)
+// GetObjectMetricReplicas calculates the desired replica count based on a target metric value (as a milli-value)
 // for the given object in the given namespace, and the current replica count.
 func (c *ReplicaCalculator) GetObjectMetricReplicas(currentReplicas int32, targetUtilization int64, metricName string, namespace string, objectRef *autoscaling.CrossVersionObjectReference) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
 	utilization, timestamp, err = c.metricsClient.GetObjectMetric(metricName, namespace, objectRef)
@@ -285,4 +285,23 @@ func (c *ReplicaCalculator) GetObjectMetricReplicas(currentReplicas int32, targe
 	}
 
 	return int32(math.Ceil(usageRatio * float64(currentReplicas))), utilization, timestamp, nil
+}
+
+// GetObjectPerPodMetricReplicas calculates the desired replica count based on a target metric value per pod (as a milli-value)
+// for the given object in the given namespace, and the current replica count.
+func (c *ReplicaCalculator) GetObjectPerPodMetricReplicas(currentReplicas int32, targetUtilizationPerPod int64, metricName string, namespace string, objectRef *autoscaling.CrossVersionObjectReference) (replicaCount int32, utilization int64, timestamp time.Time, err error) {
+	utilization, timestamp, err = c.metricsClient.GetObjectMetric(metricName, namespace, objectRef)
+	if err != nil {
+		return 0, 0, time.Time{}, fmt.Errorf("unable to get metric %s: %v on %s %s/%s", metricName, objectRef.Kind, namespace, objectRef.Name, err)
+	}
+
+	replicaCount = currentReplicas
+	usageRatio := float64(utilization) / (float64(targetUtilizationPerPod) * float64(replicaCount))
+	if math.Abs(1.0-usageRatio) > c.tolerance {
+		// update number of replicas if the change is large enough
+		replicaCount = int32(math.Ceil(float64(utilization) / float64(targetUtilizationPerPod)))
+	}
+
+	utilizationProposal := int64(math.Ceil(float64(utilization) / float64(replicaCount)))
+	return replicaCount, utilizationProposal, timestamp, nil
 }

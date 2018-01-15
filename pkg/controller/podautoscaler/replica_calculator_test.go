@@ -58,8 +58,9 @@ type metricInfo struct {
 	levels       []int64
 	singleObject *autoscalingv2.CrossVersionObjectReference
 
-	targetUtilization   int64
-	expectedUtilization int64
+	targetUtilization       int64
+	perPodTargetUtilization int64
+	expectedUtilization     int64
 }
 
 type replicaCalcTestCase struct {
@@ -276,7 +277,11 @@ func (tc *replicaCalcTestCase) runTest(t *testing.T) {
 		var outTimestamp time.Time
 		var err error
 		if tc.metric.singleObject != nil {
-			outReplicas, outUtilization, outTimestamp, err = replicaCalc.GetObjectMetricReplicas(tc.currentReplicas, tc.metric.targetUtilization, tc.metric.name, testNamespace, tc.metric.singleObject)
+			if tc.metric.targetUtilization > 0 {
+				outReplicas, outUtilization, outTimestamp, err = replicaCalc.GetObjectMetricReplicas(tc.currentReplicas, tc.metric.targetUtilization, tc.metric.name, testNamespace, tc.metric.singleObject)
+			} else if tc.metric.perPodTargetUtilization > 0 {
+				outReplicas, outUtilization, outTimestamp, err = replicaCalc.GetObjectPerPodMetricReplicas(tc.currentReplicas, tc.metric.perPodTargetUtilization, tc.metric.name, testNamespace, tc.metric.singleObject)
+			}
 		} else {
 			outReplicas, outUtilization, outTimestamp, err = replicaCalc.GetMetricReplicas(tc.currentReplicas, tc.metric.targetUtilization, tc.metric.name, testNamespace, selector)
 		}
@@ -425,6 +430,25 @@ func TestReplicaCalcScaleUpCMObject(t *testing.T) {
 	tc.runTest(t)
 }
 
+func TestReplicaCalcScaleUpPerPodCMObject(t *testing.T) {
+	tc := replicaCalcTestCase{
+		currentReplicas:  3,
+		expectedReplicas: 4,
+		metric: &metricInfo{
+			name:                    "qps",
+			levels:                  []int64{20000},
+			perPodTargetUtilization: 5000,
+			expectedUtilization:     5000,
+			singleObject: &autoscalingv2.CrossVersionObjectReference{
+				Kind:       "Deployment",
+				APIVersion: "extensions/v1beta1",
+				Name:       "some-deployment",
+			},
+		},
+	}
+	tc.runTest(t)
+}
+
 func TestReplicaCalcScaleDown(t *testing.T) {
 	tc := replicaCalcTestCase{
 		currentReplicas:  5,
@@ -465,6 +489,25 @@ func TestReplicaCalcScaleDownCMObject(t *testing.T) {
 			levels:              []int64{12000},
 			targetUtilization:   20000,
 			expectedUtilization: 12000,
+			singleObject: &autoscalingv2.CrossVersionObjectReference{
+				Kind:       "Deployment",
+				APIVersion: "extensions/v1beta1",
+				Name:       "some-deployment",
+			},
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestReplicaCalcScaleDownPerPodCMObject(t *testing.T) {
+	tc := replicaCalcTestCase{
+		currentReplicas:  5,
+		expectedReplicas: 3,
+		metric: &metricInfo{
+			name:                    "qps",
+			levels:                  []int64{12000},
+			perPodTargetUtilization: 4000,
+			expectedUtilization:     4000,
 			singleObject: &autoscalingv2.CrossVersionObjectReference{
 				Kind:       "Deployment",
 				APIVersion: "extensions/v1beta1",
@@ -533,6 +576,25 @@ func TestReplicaCalcToleranceCMObject(t *testing.T) {
 			levels:              []int64{20666},
 			targetUtilization:   20000,
 			expectedUtilization: 20666,
+			singleObject: &autoscalingv2.CrossVersionObjectReference{
+				Kind:       "Deployment",
+				APIVersion: "extensions/v1beta1",
+				Name:       "some-deployment",
+			},
+		},
+	}
+	tc.runTest(t)
+}
+
+func TestReplicaCalcTolerancePerPodCMObject(t *testing.T) {
+	tc := replicaCalcTestCase{
+		currentReplicas:  3,
+		expectedReplicas: 3,
+		metric: &metricInfo{
+			name:                    "qps",
+			levels:                  []int64{20666},
+			perPodTargetUtilization: 6666,
+			expectedUtilization:     6889,
 			singleObject: &autoscalingv2.CrossVersionObjectReference{
 				Kind:       "Deployment",
 				APIVersion: "extensions/v1beta1",
