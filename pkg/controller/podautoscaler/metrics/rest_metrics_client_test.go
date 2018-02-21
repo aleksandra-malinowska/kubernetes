@@ -35,6 +35,7 @@ import (
 	metricsapi "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsfake "k8s.io/metrics/pkg/client/clientset_generated/clientset/fake"
 	cmfake "k8s.io/metrics/pkg/client/custom_metrics/fake"
+	emfake "k8s.io/metrics/pkg/client/external_metrics/fake"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -55,7 +56,7 @@ type restClientTestCase struct {
 	metricName   string
 }
 
-func (tc *restClientTestCase) prepareTestClient(t *testing.T) (*metricsfake.Clientset, *cmfake.FakeCustomMetricsClient) {
+func (tc *restClientTestCase) prepareTestClient(t *testing.T) (*metricsfake.Clientset, *cmfake.FakeCustomMetricsClient, *emfake.FakeExternalMetricsClient) {
 	namespace := "test-namespace"
 	tc.namespace = namespace
 	podNamePrefix := "test-pod"
@@ -67,6 +68,7 @@ func (tc *restClientTestCase) prepareTestClient(t *testing.T) (*metricsfake.Clie
 
 	fakeMetricsClient := &metricsfake.Clientset{}
 	fakeCMClient := &cmfake.FakeCustomMetricsClient{}
+	fakeEMClient := &emfake.FakeExternalMetricsClient{}
 
 	if isResource {
 		fakeMetricsClient.AddReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
@@ -162,7 +164,7 @@ func (tc *restClientTestCase) prepareTestClient(t *testing.T) (*metricsfake.Clie
 		})
 	}
 
-	return fakeMetricsClient, fakeCMClient
+	return fakeMetricsClient, fakeCMClient, fakeEMClient
 }
 
 func (tc *restClientTestCase) verifyResults(t *testing.T, metrics PodMetricsInfo, timestamp time.Time, err error) {
@@ -181,8 +183,8 @@ func (tc *restClientTestCase) verifyResults(t *testing.T, metrics PodMetricsInfo
 }
 
 func (tc *restClientTestCase) runTest(t *testing.T) {
-	testMetricsClient, testCMClient := tc.prepareTestClient(t)
-	metricsClient := NewRESTMetricsClient(testMetricsClient.MetricsV1beta1(), testCMClient)
+	testMetricsClient, testCMClient, testEMClient := tc.prepareTestClient(t)
+	metricsClient := NewRESTMetricsClient(testMetricsClient.MetricsV1beta1(), testCMClient, testEMClient)
 	isResource := len(tc.resourceName) > 0
 	if isResource {
 		info, timestamp, err := metricsClient.GetResourceMetric(v1.ResourceName(tc.resourceName), tc.namespace, tc.selector)
