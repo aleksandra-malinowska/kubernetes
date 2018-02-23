@@ -527,18 +527,18 @@ func (tc *testCase) prepareTestClient(t *testing.T) (*fake.Clientset, *metricsfa
 
 	fakeEMClient := &emfake.FakeExternalMetricsClient{}
 
-	fakeEMClient.AddReactor("get", "*", func(action core.Action) (handled bool, ret runtime.Object, err error) {
+	fakeEMClient.AddReactor("list", "*", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		tc.Lock()
 		defer tc.Unlock()
 
-		getForAction, wasGetFor := action.(emfake.GetForAction)
-		if !wasGetFor {
-			return true, nil, fmt.Errorf("expected a get-for action, got %v instead", action)
+		listForAction, wasListFor := action.(emfake.ListForAction)
+		if !wasListFor {
+			return true, nil, fmt.Errorf("expected a list-for action, got %v instead", action)
 		}
 
 		metrics := &emapi.ExternalMetricValueList{}
 
-		assert.Equal(t, "qps", getForAction.GetMetricName(), fmt.Sprintf("got: %v, want: qps", getForAction.GetMetricName()))
+		assert.Equal(t, "qps", listForAction.GetMetricName(), "the metric name requested should have been qps, as specified in the metric spec")
 
 		for _, level := range tc.reportedLevels {
 			metric := emapi.ExternalMetricValue{

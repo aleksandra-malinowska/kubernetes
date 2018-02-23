@@ -241,17 +241,17 @@ func (tc *replicaCalcTestCase) prepareTestClient(t *testing.T) (*fake.Clientset,
 	})
 
 	fakeEMClient := &emfake.FakeExternalMetricsClient{}
-	fakeEMClient.AddReactor("get", "*", func(action core.Action) (handled bool, ret runtime.Object, err error) {
-		getForAction, wasGetFor := action.(emfake.GetForAction)
-		if !wasGetFor {
-			return true, nil, fmt.Errorf("expected a get-for action, got %v instead", action)
+	fakeEMClient.AddReactor("list", "*", func(action core.Action) (handled bool, ret runtime.Object, err error) {
+		listForAction, wasListFor := action.(emfake.ListForAction)
+		if !wasListFor {
+			return true, nil, fmt.Errorf("expected a list-for action, got %v instead", action)
 		}
 
 		if tc.metric == nil {
-			return true, nil, fmt.Errorf("no custom metrics specified in test client")
+			return true, nil, fmt.Errorf("no external metrics specified in test client")
 		}
 
-		assert.Equal(t, tc.metric.name, getForAction.GetMetricName(), "the metric requested should have matched the one specified")
+		assert.Equal(t, tc.metric.name, listForAction.GetMetricName(), "the metric requested should have matched the one specified")
 
 		metrics := emapi.ExternalMetricValueList{}
 

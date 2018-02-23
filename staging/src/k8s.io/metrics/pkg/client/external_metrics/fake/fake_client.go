@@ -17,6 +17,7 @@ limitations under the License.
 package fake
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/testing"
@@ -24,37 +25,41 @@ import (
 	eclient "k8s.io/metrics/pkg/client/external_metrics"
 )
 
-type GetForActionImpl struct {
-	testing.GetAction
+type ListForActionImpl struct {
+	testing.ListAction
 	MetricName     string
 	MetricSelector labels.Selector
 }
 
-type GetForAction interface {
-	testing.GetAction
+type ListForAction interface {
+	testing.ListAction
 	GetMetricName() string
 	GetMetricSelector() labels.Selector
 }
 
-func (i GetForActionImpl) GetMetricName() string {
+func (i ListForActionImpl) GetMetricName() string {
 	return i.MetricName
 }
 
-func (i GetForActionImpl) GetMetricSelector() labels.Selector {
+func (i ListForActionImpl) GetMetricSelector() labels.Selector {
 	return i.MetricSelector
 }
 
-func (i GetForActionImpl) GetSubresource() string {
+func (i ListForActionImpl) GetSubresource() string {
 	return i.MetricName
 }
 
-func NewGetForAction(namespace string, metricName string, labelSelector labels.Selector) GetForActionImpl {
+func NewListForAction(namespace string, metricName string, labelSelector labels.Selector) ListForActionImpl {
 	resource := schema.GroupResource{
 		Group:    v1beta1.SchemeGroupVersion.Group,
-		Resource: "externalmetrics",
+		Resource: "externalmetricvalues",
 	}
-	return GetForActionImpl{
-		GetAction:      testing.NewGetAction(resource.WithVersion(""), namespace, metricName),
+	kind := schema.GroupKind{
+		Group: v1beta1.SchemeGroupVersion.Group,
+		Kind:  "ExternalMetricValue",
+	}
+	return ListForActionImpl{
+		ListAction:     testing.NewListAction(resource.WithVersion(""), kind.WithVersion(""), namespace, metav1.ListOptions{}),
 		MetricName:     metricName,
 		MetricSelector: labelSelector,
 	}
@@ -78,7 +83,7 @@ type fakeNamespacedMetrics struct {
 
 func (m *fakeNamespacedMetrics) List(metricName string, metricSelector labels.Selector) (*v1beta1.ExternalMetricValueList, error) {
 	obj, err := m.Fake.
-		Invokes(NewGetForAction(m.ns, metricName, metricSelector), &v1beta1.ExternalMetricValueList{})
+		Invokes(NewListForAction(m.ns, metricName, metricSelector), &v1beta1.ExternalMetricValueList{})
 
 	if obj == nil {
 		return nil, err

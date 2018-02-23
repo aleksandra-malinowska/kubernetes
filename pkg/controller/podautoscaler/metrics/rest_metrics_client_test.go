@@ -107,10 +107,10 @@ func (tc *restClientTestCase) prepareTestClient(t *testing.T) (*metricsfake.Clie
 			return true, metrics, nil
 		})
 	} else if isExternal {
-		fakeEMClient.AddReactor("get", "externalmetrics", func(action core.Action) (handled bool, ret runtime.Object, err error) {
-			getForAction := action.(emfake.GetForAction)
-			assert.Equal(t, tc.metricName, getForAction.GetMetricName(), "the metric requested should have matched the one specified.")
-			assert.Equal(t, tc.metricLabelSelector, getForAction.GetMetricSelector(), "the metric selector should have matched the one specified")
+		fakeEMClient.AddReactor("list", "externalmetricvalues", func(action core.Action) (handled bool, ret runtime.Object, err error) {
+			listForAction := action.(emfake.ListForAction)
+			assert.Equal(t, tc.metricName, listForAction.GetMetricName(), "the metric requested should have matched the one specified.")
+			assert.Equal(t, tc.metricLabelSelector, listForAction.GetMetricSelector(), "the metric selector should have matched the one specified")
 
 			metrics := emapi.ExternalMetricValueList{}
 			for _, metricPoint := range tc.reportedMetricPoints {
