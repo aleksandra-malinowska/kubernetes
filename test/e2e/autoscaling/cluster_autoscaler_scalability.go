@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
@@ -45,7 +45,7 @@ const (
 	largeScaleDownTimeout    = 20 * time.Minute
 	minute                   = 1 * time.Minute
 
-	maxNodes = 1000
+	maxNodes = 3000
 )
 
 type clusterPredicates struct {
@@ -81,6 +81,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		if originalSizes == nil {
 			originalSizes = make(map[string]int)
 			sum = 0
+			framework.Logf("Node groups: %s", framework.TestContext.CloudConfig.NodeInstanceGroup)
 			for _, mig := range strings.Split(framework.TestContext.CloudConfig.NodeInstanceGroup, ",") {
 				size, err := framework.GroupSize(mig)
 				framework.ExpectNoError(err)
@@ -95,21 +96,16 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		nodes := framework.GetReadySchedulableNodesOrDie(f.ClientSet)
 		nodeCount = len(nodes.Items)
 		Expect(nodeCount).NotTo(BeZero())
-		cpu := nodes.Items[0].Status.Capacity[v1.ResourceCPU]
-		mem := nodes.Items[0].Status.Capacity[v1.ResourceMemory]
+		template, err := getSampleNode(nodes.Items)
+		if err != nil {
+			framework.ExpectNoError(err)
+		}
+		cpu := template.Status.Allocatable[v1.ResourceCPU]
+		mem := template.Status.Allocatable[v1.ResourceMemory]
 		coresPerNode = int((&cpu).MilliValue() / 1000)
 		memCapacityMb = int((&mem).Value() / 1024 / 1024)
 
 		Expect(nodeCount).Should(Equal(sum))
-
-		if framework.ProviderIs("gke") {
-			val, err := isAutoscalerEnabled(3)
-			framework.ExpectNoError(err)
-			if !val {
-				err = enableAutoscaler("default-pool", 3, 5)
-				framework.ExpectNoError(err)
-			}
-		}
 	})
 
 	AfterEach(func() {
@@ -136,25 +132,20 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	})
 
 	It("should scale up at all [Feature:ClusterAutoscalerScalability1]", func() {
-		perNodeReservation := int(float64(memCapacityMb) * 0.95)
+		perNodeReservation := int(float64(memCapacityMb) * 0.90)
 		replicasPerNode := 10
 
 		additionalNodes := maxNodes - nodeCount
 		replicas := additionalNodes * replicasPerNode
 		additionalReservation := additionalNodes * perNodeReservation
 
-		// saturate cluster
-		reservationCleanup := ReserveMemory(f, "some-pod", nodeCount*2, nodeCount*perNodeReservation, true, memoryReservationTimeout)
-		defer reservationCleanup()
-		framework.ExpectNoError(waitForAllCaPodsReadyInNamespace(f, c))
-
 		// configure pending pods & expected scale up
 		rcConfig := reserveMemoryRCConfig(f, "extra-pod-1", replicas, additionalReservation, largeScaleUpTimeout)
 		expectedResult := createClusterPredicates(nodeCount + additionalNodes)
-		config := createScaleUpTestConfig(nodeCount, nodeCount, rcConfig, expectedResult)
+		config := createScaleUpTestConfig(nodeCount, 0, rcConfig, expectedResult)
 
 		// run test
-		testCleanup := simpleScaleUpTest(f, config)
+		testCleanup := simpleScaleUpTestWithTolerance(f, config, nodeCount, 0)
 		defer testCleanup()
 	})
 
@@ -172,23 +163,13 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 
 		glog.Infof("cores per node: %v", coresPerNode)
 
-		// saturate cluster
-		initialReplicas := nodeCount
-		reservationCleanup := ReserveMemory(f, "some-pod", initialReplicas, nodeCount*perNodeReservation, true, memoryReservationTimeout)
-		defer reservationCleanup()
-		framework.ExpectNoError(waitForAllCaPodsReadyInNamespace(f, c))
-
-		glog.Infof("Reserved successfully")
-
 		// configure pending pods & expected scale up #1
 		rcConfig := reserveMemoryRCConfig(f, "extra-pod-1", replicas1, additionalNodes1*perNodeReservation, largeScaleUpTimeout)
 		expectedResult := createClusterPredicates(nodeCount + additionalNodes1)
 		config := createScaleUpTestConfig(nodeCount, nodeCount, rcConfig, expectedResult)
 
 		// run test #1
-		tolerateUnreadyNodes := additionalNodes1 / 20
-		tolerateUnreadyPods := (initialReplicas + replicas1) / 20
-		testCleanup1 := simpleScaleUpTestWithTolerance(f, config, tolerateUnreadyNodes, tolerateUnreadyPods)
+		testCleanup1 := simpleScaleUpTestWithTolerance(f, config, nodeCount, 0)
 		defer testCleanup1()
 
 		glog.Infof("Scaled up once")
@@ -199,9 +180,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		config2 := createScaleUpTestConfig(nodeCount+additionalNodes1, nodeCount+additionalNodes2, rcConfig2, expectedResult2)
 
 		// run test #2
-		tolerateUnreadyNodes = maxNodes / 20
-		tolerateUnreadyPods = (initialReplicas + replicas1 + replicas2) / 20
-		testCleanup2 := simpleScaleUpTestWithTolerance(f, config2, tolerateUnreadyNodes, tolerateUnreadyPods)
+		testCleanup2 := simpleScaleUpTestWithTolerance(f, config2, nodeCount, 0)
 		defer testCleanup2()
 
 		glog.Infof("Scaled up twice")
@@ -209,12 +188,14 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 
 	It("should scale down empty nodes [Feature:ClusterAutoscalerScalability3]", func() {
 		perNodeReservation := int(float64(memCapacityMb) * 0.7)
-		replicas := int(math.Ceil(maxNodes * 0.7))
-		totalNodes := maxNodes
+		targetGroup := anyKey(originalSizes)
+		newNodes := maxNodes - originalSizes[targetGroup]
+		totalNodes := nodeCount + newNodes
+		replicas := int(math.Ceil(float64(newNodes) * 0.7))
 
 		// resize cluster to totalNodes
 		newSizes := map[string]int{
-			anyKey(originalSizes): totalNodes,
+			targetGroup: maxNodes,
 		}
 		setMigSizes(newSizes)
 		framework.ExpectNoError(framework.WaitForReadyNodes(f.ClientSet, totalNodes, largeResizeTimeout))
@@ -223,15 +204,13 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		rcConfig := reserveMemoryRCConfig(f, "some-pod", replicas, replicas*perNodeReservation, largeScaleUpTimeout)
 		expectedResult := createClusterPredicates(totalNodes)
 		config := createScaleUpTestConfig(totalNodes, totalNodes, rcConfig, expectedResult)
-		tolerateUnreadyNodes := totalNodes / 10
-		tolerateUnreadyPods := replicas / 10
-		testCleanup := simpleScaleUpTestWithTolerance(f, config, tolerateUnreadyNodes, tolerateUnreadyPods)
+		testCleanup := simpleScaleUpTestWithTolerance(f, config, 0, 0)
 		defer testCleanup()
 
 		// check if empty nodes are scaled down
 		framework.ExpectNoError(WaitForClusterSizeFunc(f.ClientSet,
 			func(size int) bool {
-				return size <= replicas+3 // leaving space for non-evictable kube-system pods
+				return size <= replicas+nodeCount+3 // leaving space for non-evictable kube-system pods
 			}, scaleDownTimeout))
 	})
 
@@ -241,13 +220,16 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		underutilizedPerNodeReplicas := 10
 		// fullNodes are 70% full
 		fullPerNodeReplicas := 70
-		totalNodes := maxNodes
 		underutilizedRatio := 0.3
 		maxDelta := 30
 
+		targetGroup := anyKey(originalSizes)
+		newNodes := maxNodes - originalSizes[targetGroup]
+		totalNodes := nodeCount + newNodes
+
 		// resize cluster to totalNodes
 		newSizes := map[string]int{
-			anyKey(originalSizes): totalNodes,
+			targetGroup: maxNodes,
 		}
 		setMigSizes(newSizes)
 
@@ -268,7 +250,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		// distribute pods using replication controllers taking up space that should
 		// be empty after pods are distributed
 		underutilizedNodesNum := int(float64(maxNodes) * underutilizedRatio)
-		fullNodesNum := totalNodes - underutilizedNodesNum
+		fullNodesNum := maxNodes - underutilizedNodesNum
 
 		podDistribution := []podBatch{
 			{numNodes: fullNodesNum, podsPerNode: fullPerNodeReplicas},
@@ -283,7 +265,7 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 
 		// wait for scale down to start. Node deletion takes a long time, so we just
 		// wait for maximum of 30 nodes deleted
-		nodesToScaleDownCount := int(float64(totalNodes) * 0.1)
+		nodesToScaleDownCount := int(float64(maxNodes) * 0.1)
 		if nodesToScaleDownCount > maxDelta {
 			nodesToScaleDownCount = maxDelta
 		}
@@ -297,15 +279,18 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	It("shouldn't scale down with underutilized nodes due to host port conflicts [Feature:ClusterAutoscalerScalability5]", func() {
 		fullReservation := int(float64(memCapacityMb) * 0.9)
 		hostPortPodReservation := int(float64(memCapacityMb) * 0.3)
-		totalNodes := maxNodes
 		reservedPort := 4321
+
+		targetGroup := anyKey(originalSizes)
+		newNodes := maxNodes - originalSizes[targetGroup]
+		totalNodes := nodeCount + newNodes
 
 		// resize cluster to totalNodes
 		newSizes := map[string]int{
-			anyKey(originalSizes): totalNodes,
+			targetGroup: maxNodes,
 		}
 		setMigSizes(newSizes)
-		framework.ExpectNoError(framework.WaitForReadyNodes(f.ClientSet, totalNodes, largeResizeTimeout))
+		framework.ExpectNoError(framework.WaitForReadyNodes(f.ClientSet, nodeCount+newNodes, largeResizeTimeout))
 		divider := int(float64(totalNodes) * 0.7)
 		fullNodesCount := divider
 		underutilizedNodesCount := totalNodes - fullNodesCount
@@ -346,9 +331,8 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		unschedulablePodReplicas := 1000
 		totalMemReservation := unschedulableMemReservation * unschedulablePodReplicas
 		timeToWait := 5 * time.Minute
-		podsConfig := reserveMemoryRCConfig(f, "unschedulable-pod", unschedulablePodReplicas, totalMemReservation, timeToWait)
-		framework.RunRC(*podsConfig) // Ignore error (it will occur because pods are unschedulable)
-		defer framework.DeleteRCAndWaitForGC(f.ClientSet, f.Namespace.Name, podsConfig.Name)
+		unschedulableCleanup := ReserveMemory(f, "unschedulable-pod", unschedulablePodReplicas, totalMemReservation, false, timeToWait)
+		defer unschedulableCleanup()
 
 		// Ensure that no new nodes have been added so far.
 		Expect(framework.NumberOfReadyNodes(f.ClientSet)).To(Equal(nodeCount))
@@ -368,9 +352,30 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 
 })
 
+func getSampleNode(nodes []v1.Node) (v1.Node, error) {
+	for _, node := range nodes {
+		if !strings.Contains(node.Labels[gkeNodepoolNameKey], "default-pool-large") {
+			return node, nil
+		} else {
+			glog.Infof("Node %v is unsuitable, node-pool label: %v", node.Name, node.Labels[gkeNodepoolNameKey])
+		}
+	}
+	return v1.Node{}, fmt.Errorf("No suitable sample node found, nodes: %v", nodes)
+}
+
+func nodeNames(nodes []v1.Node) []string {
+	names := make([]string, len(nodes), len(nodes))
+	for i, node := range nodes {
+		names[i] = node.Name
+	}
+	return names
+}
+
 func anyKey(input map[string]int) string {
 	for k := range input {
-		return k
+		if !strings.Contains(k, "default") {
+			return k
+		}
 	}
 	return ""
 }
@@ -416,6 +421,14 @@ func reserveMemoryRCConfig(f *framework.Framework, id string, replicas, megabyte
 		Image:          imageutils.GetPauseImageName(),
 		Replicas:       replicas,
 		MemRequest:     int64(1024 * 1024 * megabytes / replicas),
+		NodeSelector:   map[string]string{"pool-type": "test"},
+		Tolerations: []v1.Toleration{
+			{
+				Key:    "pool-type",
+				Value:  "test",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		},
 	}
 }
 

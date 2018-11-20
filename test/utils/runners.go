@@ -790,7 +790,7 @@ func (config *RCConfig) start() error {
 			errorStr := fmt.Sprintf("Number of reported pods for %s changed: %d vs %d", config.Name, len(pods), len(oldPods))
 			config.RCConfigLog("%v, pods that changed since the last iteration:", errorStr)
 			config.RCConfigLog(Diff(oldPods, pods).String(sets.NewString()))
-			return fmt.Errorf(errorStr)
+			//return fmt.Errorf(errorStr)
 		}
 
 		if len(pods) > len(oldPods) || startupStatus.Running > oldRunning {
