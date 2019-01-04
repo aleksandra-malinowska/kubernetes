@@ -101,7 +101,7 @@ func GroupSize(group string) (int, error) {
 			"list-instances", group, "--project="+TestContext.CloudConfig.ProjectID,
 			"--zone="+zone).CombinedOutput()
 		if err != nil {
-			return -1, fmt.Errorf("Failed to get group size for group %s: %s", group, output)
+			return -1, fmt.Errorf("Failed to get group size for group %s in zone %s: %s", group, zone, output)
 		}
 		re := regexp.MustCompile("RUNNING")
 		return len(re.FindAllString(string(output), -1)), nil
