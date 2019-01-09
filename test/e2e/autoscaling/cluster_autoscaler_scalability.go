@@ -58,8 +58,6 @@ type clusterPredicates struct {
 }
 
 type scaleUpTestConfig struct {
-	initialNodes   int
-	initialPods    int
 	extraPods      []*testutils.RCConfig
 	expectedResult *clusterPredicates
 }
@@ -144,27 +142,28 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 		glog.Infof("Made nodes schedulable again in %v", time.Since(s).String())
 	})
 
-	It("should scale up at all [Feature:ClusterAutoscalerScalability1]", func() {
+	createRCConfigs := func(prefix string, additionalNodes int) []*testutils.RCConfig {
+		// configure pending pods & expected scale up
 		perNodeReservation := int(float64(memCapacityMb) * 0.90)
-
-		additionalNodes := maxNodes //- nodeCount
 		replicas := additionalNodes * podsPerNode
 		replicasPerController := int(replicas / controllers)
 		overflow := replicas - (replicasPerController * controllers)
 		additionalReservation := int(additionalNodes * perNodeReservation / controllers)
-
-		// configure pending pods & expected scale up
 		rcConfigs := []*testutils.RCConfig{}
 		for i := 0; i < controllers; i++ {
 			r := replicasPerController
 			if i < overflow {
 				r++
 			}
-			rcConfig := reserveMemoryRCConfig(f, fmt.Sprintf("extra-pod-%v", i), r, additionalReservation, largeScaleUpTimeout)
+			rcConfig := reserveMemoryRCConfig(f, fmt.Sprintf("%s-%v", prefix, i), r, additionalReservation, largeScaleUpTimeout)
 			rcConfigs = append(rcConfigs, rcConfig)
 		}
+		return rcConfigs
+	}
 
-		expectedResult := createClusterPredicates(nodeCount + additionalNodes)
+	It("should scale up at all [Feature:ClusterAutoscalerScalability1]", func() {
+		rcConfigs := createRCConfigs("extra-pod", maxNodes)
+		expectedResult := createClusterPredicates(nodeCount + maxNodes)
 		config := createScaleUpTestConfigMany(nodeCount, 0, rcConfigs, expectedResult)
 
 		// run test
@@ -173,34 +172,29 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	})
 
 	It("should scale up twice [Feature:ClusterAutoscalerScalability2]", func() {
-		perNodeReservation := int(float64(memCapacityMb) * 0.95)
-		replicasPerNode := 10
 		additionalNodes1 := int(math.Ceil(0.7 * float64(maxNodes)))
 		additionalNodes2 := int(math.Ceil(0.25 * float64(maxNodes)))
 		if additionalNodes1+additionalNodes2 > maxNodes {
 			additionalNodes2 = maxNodes - additionalNodes1
 		}
 
-		replicas1 := additionalNodes1 * replicasPerNode
-		replicas2 := additionalNodes2 * replicasPerNode
-
 		glog.Infof("cores per node: %v", coresPerNode)
 
 		// configure pending pods & expected scale up #1
-		rcConfig := reserveMemoryRCConfig(f, "extra-pod-1", replicas1, additionalNodes1*perNodeReservation, largeScaleUpTimeout)
-		expectedResult := createClusterPredicates(nodeCount + additionalNodes1)
-		config := createScaleUpTestConfig(nodeCount, nodeCount, rcConfig, expectedResult)
+		rcConfigs1 := createRCConfigs("first", additionalNodes1)
+		expectedResult1 := createClusterPredicates(nodeCount + additionalNodes1)
+		config1 := createScaleUpTestConfigMany(nodeCount, 0, rcConfigs1, expectedResult1)
 
 		// run test #1
-		testCleanup1 := simpleScaleUpTestWithTolerance(f, config, nodeCount, 0)
+		testCleanup1 := simpleScaleUpTestWithTolerance(f, config1, nodeCount, 0)
 		defer testCleanup1()
 
 		glog.Infof("Scaled up once")
 
 		// configure pending pods & expected scale up #2
-		rcConfig2 := reserveMemoryRCConfig(f, "extra-pod-2", replicas2, additionalNodes2*perNodeReservation, largeScaleUpTimeout)
+		rcConfigs2 := createRCConfigs("second", additionalNodes2)
 		expectedResult2 := createClusterPredicates(nodeCount + additionalNodes1 + additionalNodes2)
-		config2 := createScaleUpTestConfig(nodeCount+additionalNodes1, nodeCount+additionalNodes2, rcConfig2, expectedResult2)
+		config2 := createScaleUpTestConfigMany(nodeCount+additionalNodes1, 0, rcConfigs2, expectedResult2)
 
 		// run test #2
 		testCleanup2 := simpleScaleUpTestWithTolerance(f, config2, nodeCount, 0)
@@ -491,8 +485,6 @@ func createScaleUpTestConfig(nodes, pods int, extraPods *testutils.RCConfig, exp
 
 func createScaleUpTestConfigMany(nodes, pods int, extraPods []*testutils.RCConfig, expectedResult *clusterPredicates) *scaleUpTestConfig {
 	return &scaleUpTestConfig{
-		initialNodes:   nodes,
-		initialPods:    pods,
 		extraPods:      extraPods,
 		expectedResult: expectedResult,
 	}
