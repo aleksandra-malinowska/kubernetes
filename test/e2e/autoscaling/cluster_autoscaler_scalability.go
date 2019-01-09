@@ -18,6 +18,7 @@ package autoscaling
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math"
 	"strings"
@@ -44,8 +45,12 @@ const (
 	largeScaleUpTimeout      = 10 * time.Minute
 	largeScaleDownTimeout    = 20 * time.Minute
 	minute                   = 1 * time.Minute
+)
 
-	maxNodes = 100
+var (
+	maxNodesFlag    = flag.Int("max-nodes", 10, "maximum number of nodes in test node pools")
+	podsPerNodeFlag = flag.Int("pods-per-node", 30, "number of pods per node")
+	controllersFlag = flag.Int("controllers", 1, "number of controllers to use")
 )
 
 type clusterPredicates struct {
@@ -67,6 +72,9 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	var memCapacityMb int
 	var originalSizes map[string]int
 	var sum int
+	var maxNodes int
+	var podsPerNode int
+	var controllers int
 
 	BeforeEach(func() {
 		framework.SkipUnlessProviderIs("gce", "gke", "kubemark")
@@ -79,6 +87,11 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 
 		c = f.ClientSet
 		if originalSizes == nil {
+			// First time this is running.
+			maxNodes = *maxNodesFlag
+			podsPerNode = *podsPerNodeFlag
+			controllers = *controllersFlag
+
 			originalSizes = make(map[string]int)
 			sum = 0
 			framework.Logf("Node groups: %s", framework.TestContext.CloudConfig.NodeInstanceGroup)
@@ -133,11 +146,9 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 
 	It("should scale up at all [Feature:ClusterAutoscalerScalability1]", func() {
 		perNodeReservation := int(float64(memCapacityMb) * 0.90)
-		replicasPerNode := 10
-		controllers := 10
 
-		additionalNodes := maxNodes - nodeCount
-		replicas := additionalNodes * replicasPerNode
+		additionalNodes := maxNodes //- nodeCount
+		replicas := additionalNodes * podsPerNode
 		replicasPerController := int(replicas / controllers)
 		overflow := replicas - (replicasPerController * controllers)
 		additionalReservation := int(additionalNodes * perNodeReservation / controllers)
@@ -164,8 +175,8 @@ var _ = framework.KubeDescribe("Cluster size autoscaler scalability [Slow]", fun
 	It("should scale up twice [Feature:ClusterAutoscalerScalability2]", func() {
 		perNodeReservation := int(float64(memCapacityMb) * 0.95)
 		replicasPerNode := 10
-		additionalNodes1 := int(math.Ceil(0.7 * maxNodes))
-		additionalNodes2 := int(math.Ceil(0.25 * maxNodes))
+		additionalNodes1 := int(math.Ceil(0.7 * float64(maxNodes)))
+		additionalNodes2 := int(math.Ceil(0.25 * float64(maxNodes)))
 		if additionalNodes1+additionalNodes2 > maxNodes {
 			additionalNodes2 = maxNodes - additionalNodes1
 		}
