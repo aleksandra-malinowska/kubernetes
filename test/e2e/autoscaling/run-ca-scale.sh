@@ -6,8 +6,8 @@ PROJECT=aleksandram-gke-dev
 ZONE=us-central1-c
 ENV="test"
 CLUSTER_NAME=ca-scale
-CLUSTER_VERSION="1.11"
-NODES=10
+CLUSTER_VERSION="1.11.6-gke.11"
+NODES=90
 POOLS=2
 PODS_PER_NODE=30
 CONTROLLERS=3
@@ -110,7 +110,7 @@ run-test() {
     --gcp-zone=${ZONE} \
     --gcp-project=${PROJECT} \
     --test --check-version-skew=false -v 4 \
-    --test_args="--ginkgo.focus=ClusterAutoscalerScalability1 --max-nodes ${NODES} --pods-per-node ${PODS_PER_NODE} --controllers ${CONTROLLERS}" \
+    --test_args="--ginkgo.focus=ClusterAutoscalerScalabilityScale --ginkgo.skip=UnschedulablePods|EmptyCluster --max-nodes ${NODES} --pods-per-node ${PODS_PER_NODE} --controllers ${CONTROLLERS}" \
     --provider=gke --deployment=gke --gcp-node-image=cos --gke-environment ${GKE_ENDPOINT} \
     --gcp-network=default > ${LOG_NAME}
   echo "Test completed"
