@@ -12,6 +12,8 @@ POOLS=2
 PODS_PER_NODE=30
 CONTROLLERS=3
 MACHINE_TYPE=g1-small
+GINKGO_FOCUS="Scale" # ScaleUp, ScaleDown, ScaleDownEmpty, ScaleDownUnderutilized
+GINKGO_SKIP="nothing" # UnschedulablePods, LargeCluster, EmptyCluster, or a combination e.g. UnschedulablePods|EmptyCluster
 
 # Script control
 CREATE_CLUSTER=${CREATE_CLUSTER:-"true"}
@@ -23,7 +25,6 @@ CIDR_RANGE=/12
 EXTRA_POOL_MAX=5
 HEAPSTER_MACHINE_TYPE=n1-standard-4
 GKE_ENDPOINT=https://test-container.sandbox.googleapis.com/
-OLD_GKE_ENDPOINT=${CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER:-}
 
 # Hard-coded defaults (modify here if required)
 DEFAULT_POOL_MAX=20
@@ -110,16 +111,10 @@ run-test() {
     --gcp-zone=${ZONE} \
     --gcp-project=${PROJECT} \
     --test --check-version-skew=false -v 4 \
-    --test_args="--ginkgo.focus=ClusterAutoscalerScalabilityScale --ginkgo.skip=UnschedulablePods|EmptyCluster --max-nodes ${NODES} --pods-per-node ${PODS_PER_NODE} --controllers ${CONTROLLERS}" \
+    --test_args="--ginkgo.focus=ClusterAutoscalerScalability${GINKGO_FOCUS} --ginkgo.skip=${GINKGO_SKIP} --max-nodes ${NODES} --pods-per-node ${PODS_PER_NODE} --controllers ${CONTROLLERS}" \
     --provider=gke --deployment=gke --gcp-node-image=cos --gke-environment ${GKE_ENDPOINT} \
     --gcp-network=default > ${LOG_NAME}
   echo "Test completed"
-}
-
-# Cleanup shell.
-cleanup() {
-  echo "Setting CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER=${OLD_GKE_ENDPOINT}"
-  export CLOUDSDK_API_ENDPOINT_OVERRIDES_CONTAINER=${OLD_GKE_ENDPOINT}
 }
 
 main() {
@@ -138,8 +133,8 @@ main() {
   then
     delete-cluster
   fi;
-  cleanup
 }
 
 main
+
 
